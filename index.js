@@ -6,5 +6,5 @@ const app = express();
 import dotenv from "dotenv";
 dotenv.config({ path: "./config/config.env" });
 
-//hellow
+//hellow done
 bootstrap(app, express);
