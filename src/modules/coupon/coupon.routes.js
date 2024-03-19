@@ -2,11 +2,18 @@ import { Router } from "express";
 import * as co_c from "./controller/coupon.js";
 import { valid } from "../../middleware/validation.js";
 import { createCouponSchema } from "./controller/coupon.valid.js";
-import { authentication } from "../../middleware/authentication.js";
-import { authorization } from "../../middleware/authorization.js";
+import { isAuth, roles } from "../../middleware/authentication.js";
 const router = Router();
-router.use(authentication, authorization("admin"));
-router.post("/createCoupon", valid(createCouponSchema), co_c.createCoupon);
-router.get("/getallcopuons", co_c.getCoupons);
+router.post(
+  "/createCoupon",
+  isAuth([roles.admin, roles.super]),
+  valid(createCouponSchema),
+  co_c.createCoupon
+);
+router.get(
+  "/getallcopuons",
+  isAuth([roles.admin, roles.super]),
+  co_c.getCoupons
+);
 
 export default router;

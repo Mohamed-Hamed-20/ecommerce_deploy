@@ -1,68 +1,114 @@
-import jwt from "jsonwebtoken";
+import { generateToken, verifyToken } from "../utils/Tokens.js";
 import { asyncHandler } from "../utils/errorHandling.js";
-import { tokenmodel } from "../../DB/models/Token.model.js";
 import { usermodel } from "../../DB/models/user.model.js";
+import TokenModel from "../../DB/models/Token.model.js";
 
-export const authentication = asyncHandler(async (req, res, next) => {
-  let { token } = req.headers;
-
-  //chk is token and start with what ever
-  if (!token || !token.startsWith(process.env.Token_Start)) {
-    return next(new Error("invalid token start with"), { cause: 400 });
-  }
-
-  // spilte startswith
-  token = token.split(process.env.Token_Start)[1];
-  try {
-    // decode token
-    const decode = jwt.verify(token, process.env.tokenKey);
-    //chk token payload is right
-    if (!decode.email && !decode._id) {
-      return next(new Error("Invalid Token Payload"), { cause: 400 });
+export const isAuth = (roles) => {
+  return asyncHandler(async (req, res, next) => {
+    const accessToken = req.headers.authorization;
+    const refreshToken = req.headers["refresh-token"];
+    //check token send
+    if (!accessToken || !refreshToken) {
+      return next(
+        new Error("Please login first OR refreshToken accessToken Not found ", {
+          cause: 400,
+        })
+      );
     }
 
-    //chk this token in tokenDB and valid true
-    const chktoken = await tokenmodel.findOne({ token: token, isvalid: true });
-    if (!chktoken) {
-      return next(new Error("Token not found in DB"), { cause: 400 });
+    //check token startwith
+    if (!accessToken.startsWith(process.env.ACCESS_TOKEN_startwith)) {
+      return next(new Error("invalid token prefix", { cause: 400 }));
     }
 
-    //chk email in token in userDB or _id
-    const user = await usermodel.findOne({ email: decode.email });
-    //return next()
-    req.user = user;
-    return next();
-  } catch (error) {
-    if (error == "TokenExpiredError: jwt expired") {
-      //chk and  find token and user in DB
-      const findtoken = await tokenmodel.findOne({ token: token });
-      if (!findtoken) {
-        return next(new Error("invalid token", { cause: 400 }));
+    //split Token
+    const splitedToken = accessToken.split(
+      process.env.ACCESS_TOKEN_startwith
+    )[1];
+    try {
+      const decode = verifyToken({
+        token: splitedToken,
+        signature: process.env.ACCESS_TOKEN_SECRET,
+      });
+      if (!decode.userId || !decode.role || !decode.IpAddress) {
+        return next(new Error("Invalid Token Payload", { cause: 400 }));
       }
-      //find user
-      const user = await usermodel.findById({ _id: findtoken.userID });
-      if (!user) {
+
+      if (decode.IpAddress != req.ip) {
         return next(
-          new Error("user not found , sign UP please", { cause: 400 })
+          new Error("Invalid Ip Address Login Again", { cause: 401 })
         );
       }
-      //generate new token
-      const refreshToken = jwt.sign(
-        { _id: user._id, email: user.email },
-        process.env.tokenKey,
-        { expiresIn: 60 * 60 *12 }
-      );
-      if (!refreshToken) {
-        return next(new Error("server error invalid token", { cause: 500 }));
+      //if user search in usermodel if admin or instructor search in admin model
+
+      const user = await usermodel.findById({ _id: decode.userId });
+      if (!user) {
+        return next(new Error("please Signup", { cause: 400 }));
       }
-      //update DB token
-      findtoken.token = refreshToken;
-      await findtoken.save();
-      res
-        .status(200)
-        .json({ message: "Done", sucess: true, token: refreshToken });
-    } else {
-      return next(new Error("invalid token", { cause: 400 }));
+
+      // chk authorized
+      if (!roles.includes(user.role)) {
+        return next(new Error("Unauthorized user", { cause: 401 }));
+      }
+
+      req.user = user;
+      return next();
+    } catch (error) {
+      if (error.message.includes("jwt expired")) {
+        // verify refresh token
+        const verifyreftoken = verifyToken({
+          token: refreshToken,
+          signature: process.env.REFRESH_TOKEN_SECRET,
+        });
+        if (!verifyreftoken || verifyreftoken?.IpAddress != req.ip) {
+          return next(
+            new Error("Invalid refresh Token or IP ", { cause: 400 })
+          );
+        }
+        // token  => search in db
+        const reftoken = await TokenModel.findOne({
+          refreshToken: refreshToken,
+          isvalid: true,
+          userId: verifyreftoken.userId,
+        });
+        if (!reftoken) {
+          return next(new Error("Wrong token or Not Valid", { cause: 400 }));
+        }
+
+        // generate new token
+
+        const newaccessToken = await generateToken({
+          payload: {
+            userId: reftoken.userId,
+            role: verifyreftoken.role,
+            IpAddress: req.ip,
+          },
+          signature: process.env.ACCESS_TOKEN_SECRET,
+          expiresIn: process.env.accessExpireIn,
+        });
+        if (!newaccessToken) {
+          return next(
+            new Error("token generation fail, payload canot be empty", {
+              cause: 400,
+            })
+          );
+        }
+
+        return res.status(200).json({
+          message: "Token refreshed",
+          accessToken: newaccessToken,
+          refreshToken: refreshToken,
+        });
+      } else {
+        throw new Error(error);
+        // return next(new Error("invalid token", { cause: 500 }));
+      }
     }
-  }
-});
+  });
+};
+
+export const roles = {
+  super: "superAdmin",
+  user: "user",
+  admin: "admin",
+};

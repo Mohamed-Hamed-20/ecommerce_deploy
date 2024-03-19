@@ -4,15 +4,13 @@ import { multerCloudFunction } from "../../utils/multerCloud.js";
 import { allowedExtensions } from "../../utils/allowedExtensions.js";
 import { valid } from "../../middleware/validation.js";
 import * as schemaV from "./controller/category.validation.js";
-import { authentication } from "../../middleware/authentication.js";
+import { isAuth, roles } from "../../middleware/authentication.js";
 import productRouter from "../product/product.routes.js";
-import { authorization } from "../../middleware/authorization.js";
 const router = Router();
 router.use("/:categoryId/products", productRouter);
 router.post(
   "/createCategory",
-  authentication,
-  authorization(["SuperAdmin", "admin"]),
+  isAuth([roles.admin, roles.super]),
   multerCloudFunction(allowedExtensions.Image).single("imgcategory"),
   valid(schemaV.createSchemaCategory),
   cc.createCategory
@@ -20,8 +18,7 @@ router.post(
 
 router.put(
   "/UpdateCategory",
-  authentication,
-  authorization(["admin","superAdmin"]),
+  isAuth([roles.admin, roles.super]),
   multerCloudFunction(allowedExtensions.Image).single("imgcategory"),
   valid(schemaV.UpdateSchemaCategory),
   cc.UpdateCategory
@@ -29,8 +26,7 @@ router.put(
 
 router.delete(
   "/deleteCategory",
-  authentication,
-  authorization(["admin", "superAdmin"]),
+  isAuth([roles.admin, roles.super]),
   valid(schemaV.deleteSchemaCategory),
   cc.deleteCategory
 );

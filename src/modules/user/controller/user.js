@@ -8,8 +8,11 @@ import {
   restpasswordTemplet,
 } from "../../../utils/generateHtml.js";
 import jwt from "jsonwebtoken";
-import { tokenmodel } from "../../../../DB/models/Token.model.js";
 import { customAlphabet } from "nanoid";
+import { generateToken } from "../../../utils/tokenFunctions.js";
+import { storeRefreshToken } from "../../../utils/Tokens.js";
+import { hashpassword, verifypass } from "../../../utils/hashpassword.js";
+import TokenModel from "../../../../DB/models/Token.model.js";
 const nanoid = customAlphabet("1234567890", 7);
 
 export const register = asyncHandler(async (req, res, next) => {
@@ -40,16 +43,19 @@ export const register = asyncHandler(async (req, res, next) => {
   if (!result) {
     return next(new Error("invalid-signUP", { cause: 500 }));
   }
-  await result.save();
-  console.log(
-    `${req.protocol}://${req.headers.host}/confirmEmail/${activationCode}`
-  );
+
   const link = `${req.protocol}://${req.headers.host}/user/confirmEmail/${activationCode}`;
   const isSend = await sendEmail({
     to: email,
     subject: "confirm Email",
     html: `${SignUpTemplet(link)}`,
   });
+
+  if (!isSend) {
+    return next(new Error("Something went wrong!", { cause: 400 }));
+  }
+  //safe document
+  await result.save();
 
   return isSend
     ? res
@@ -74,50 +80,61 @@ export const confirmEmail = asyncHandler(async (req, res, next) => {
 export const login = asyncHandler(async (req, res, next) => {
   //get data
   const { email, password } = req.body;
-  console.log({ email, password });
   //chk email in DB
-  const chkuser = await usermodel.findOne({ email: email });
-  if (!chkuser) {
+  const user = await usermodel.findOne({ email: email });
+  if (!user) {
     return next(new Error("invalid email or password", { cause: 404 }));
   }
+
   //chk is confirm email
-  if (chkuser.isconfrimed == false) {
+  if (user.isconfrimed == false) {
     return next(new Error("please confirm ur email", { cause: 400 }));
   }
-  //chk password done
-  const matched = bcrypt.compareSync(password, chkuser.password);
+
+  // check password
+  const matched = await verifypass({
+    password: password,
+    hashpassword: user.password,
+  });
   if (!matched) {
-    return next(new Error("invalid email or password_", { cause: 404 }));
+    return next(new Error("Invalid Email or password", { cause: 404 }));
   }
-  //genreate token
-  const token = jwt.sign(
-    { _id: chkuser._id, email: chkuser.email },
-    process.env.tokenKey,
-    { expiresIn: 60 * 60 }
-  );
+
+  //generate accessToken
+  const accessToken = generateToken({
+    payload: { userId: user._id, role: user.role, IpAddress: req.ip },
+    signature: process.env.ACCESS_TOKEN_SECRET,
+    expiresIn: process.env.accessExpireIn,
+  });
+
+  //generate refreshToken
+  const refreshToken = generateToken({
+    payload: { userId: user._id, role: user.role, IpAddress: req.ip },
+    signature: process.env.REFRESH_TOKEN_SECRET,
+    expiresIn: process.env.REFRESH_ExpireIn,
+  });
+
   //chk it generateed
-  if (!token) {
-    return next(new Error("invalid Token", { cause: 404 }));
+  if (!accessToken || !refreshToken) {
+    return next(new Error("invalid Token", { cause: 500 }));
   }
   //safe token in DB and sure he done with info
-  const createToken = {
-    token: token,
-    userID: chkuser._id,
-    agent: req.headers["user-agent"],
-    expiredAt: "1h",
-  };
-  const safetoken = await tokenmodel.create(createToken);
-  if (!safetoken) {
-    return next(new Error("error try later", { cause: 400 }));
+  const success = await storeRefreshToken(refreshToken, user._id, next);
+
+  if (!success) {
+    return next(new Error("Failed to store refresh token"), { cause: 500 });
   }
+
   //change user status to online
-  chkuser.status = "online";
-  await chkuser.save();
+  user.status = "online";
+  await user.save();
+
   //resopnse done with token
-  return res.json({
-    message: `welcome ${chkuser.firstName} ${chkuser.lastName}`,
-    token: token,
-    userEmail: chkuser.email,
+  return res.status(200).json({
+    message: `welcome ${user.firstName} ${user.lastName}`,
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+    role: user.role,
   });
 });
 
@@ -147,27 +164,31 @@ export const resetpassword = asyncHandler(async (req, res, next) => {
   const { forgetCode, email, password } = req.body;
   //chk email exist and forgetCode right
   const user = await usermodel.findOne({ email });
+
   if (!user) {
     return next(new Error("invalid email", { cause: 404 }));
   }
   if (user.forgetCode != forgetCode) {
-    return next(new Error("invalid forgetCode"));
+    return next(new Error("invalid forgetCode", { cause: 400 }));
   }
   // make all token for this user is false
-  const tokens = await tokenmodel.findOneAndUpdate(
+  const tokens = await TokenModel.findOneAndUpdate(
     { userID: user._id },
     { isvalid: false },
     { new: true }
   );
+
   // password using hash password
-  const newpassword = hashSync(password, Number(process.env.salt_Round));
-  console.log(newpassword);
+  const newpassword = await hashpassword({
+    password: password,
+    saltRound: process.env.salt_Round,
+  });
+
   //update user table passwoed and forgetpass
-  const result = await usermodel.findByIdAndUpdate(
-    { _id: user._id },
-    { forgetCode: null, password: newpassword },
-    { new: true }
-  );
+  user.password = newpassword;
+  delete user.forgetCode;
+  const result = await user.save();
+
   if (!result) {
     return next(new Error("server Error :(", { cause: 500 }));
   }
