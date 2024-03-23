@@ -22,9 +22,9 @@ export const createProductSchema = {
     .required(),
   query: joi
     .object({
-      categoryId: joi.custom(validationId).required(),
-      subCategoryId: joi.custom(validationId).required(),
-      brandId: joi.custom(validationId).required(),
+      categoryId: joi.custom(validationId).optional(),
+      subCategoryId: joi.custom(validationId).optional(),
+      brandId: joi.custom(validationId).optional(),
     })
     .required(),
 };

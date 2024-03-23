@@ -13,30 +13,40 @@ const nanoid = customAlphabet("abcdefghigklmnopqwert1234567890", 7);
 export const createProduct = asyncHandler(async (req, res, next) => {
   const { subCategoryId, categoryId, brandId } = req.query;
   //chk subcategoryId, categoryId, brandId not create efore in DB
-  const category = await categoryModel.findById(categoryId);
-  if (!category) {
-    return next(new Error("Category not found", { cause: 404 }));
+  if (categoryId) {
+    const category = await categoryModel.findById(categoryId);
+    if (!category) {
+      return next(new Error("Category not found", { cause: 404 }));
+    }
   }
 
-  const subcategory = await SubCategoryModel.findById(subCategoryId);
-  if (!subcategory) {
-    return next(new Error("subcategory not found", { cause: 404 }));
+  if (subCategoryId) {
+    const subcategory = await SubCategoryModel.findById(subCategoryId);
+    if (!subcategory) {
+      return next(new Error("subcategory not found", { cause: 404 }));
+    }
   }
 
-  const brand = await brandModel.findById(brandId);
-  if (!brand) {
-    return next(new Error("brand not found", { cause: 404 }));
+  if (brandId) {
+    const brand = await brandModel.findById(brandId);
+    if (!brand) {
+      return next(new Error("brand not found", { cause: 404 }));
+    }
+    //chk ids related
+    if (
+      brand.categoryId != categoryId &&
+      brand.subCategoryId != subCategoryId
+    ) {
+      return next(
+        new Error("data not related brand , sub and category", { cause: 400 })
+      );
+    }
   }
 
-  //chk ids related
-  if (brand.categoryID != categoryId && brand.subCategoryID != subCategoryId) {
-    return next(
-      new Error("data not related brand , sub and category", { cause: 400 })
-    );
-  }
   // get user info
   const user = req.user;
   const createdBy = user._id;
+
   //get all data from req.body
   const { title, desc, color, size, price, appliedDiscount, stock } = req.body;
   let priceAfterDiscount = price;
@@ -51,7 +61,7 @@ export const createProduct = asyncHandler(async (req, res, next) => {
     return next(new Error("please upload pictures", { cause: 400 }));
   }
   const customId = title + "_" + nanoid();
-  const folder = `${process.env.folder_name}/category/${category.customId}/Subcategory/${subcategory.customId}/brand/${brand.customId}/product/${customId}`;
+  const folder = `${process.env.folder_name}/category/Subcategory/product/${customId}`;
   // upload all img
   const Images = [];
   const publicIds = [];
@@ -70,6 +80,7 @@ export const createProduct = asyncHandler(async (req, res, next) => {
   //save folder to delete cloudinary
   req.folder = folder;
   req.publicIds = publicIds;
+
   //create product object
   const product = {
     title,
@@ -84,9 +95,6 @@ export const createProduct = asyncHandler(async (req, res, next) => {
     stock,
     createdBy,
     Imges: Images,
-    categoryId,
-    subCategoryId: subcategory._id,
-    brandId,
   };
   // store in DB product
   const result = await productModel.create(product);
@@ -98,7 +106,7 @@ export const createProduct = asyncHandler(async (req, res, next) => {
     return next(new Error("try again later", { cause: 500 }));
   }
   //kolo tamam res and say done
-  return res.json({ message: "Done", success: true, result });
+  return res.status(200).json({ message: "Done", success: true, result });
 });
 
 export const updateProduct = asyncHandler(async (req, res, next) => {
