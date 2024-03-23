@@ -14,8 +14,8 @@ export const createProductSchema = {
       title: joi.string().required(),
       desc: joi.string().optional(),
       price: joi.number().required(),
-      color: joi.array().required(),
-      size: joi.array().required(),
+      color: joi.alternatives().try(joi.string(), joi.array()).required(),
+      size: joi.alternatives().try(joi.string(), joi.array()).required(),
       appliedDiscount: joi.number().min(0).max(100).optional(),
       stock: joi.number().required(),
     })

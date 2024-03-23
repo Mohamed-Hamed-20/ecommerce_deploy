@@ -12,6 +12,7 @@ const nanoid = customAlphabet("abcdefghigklmnopqwert1234567890", 7);
 
 export const createProduct = asyncHandler(async (req, res, next) => {
   const { subCategoryId, categoryId, brandId } = req.query;
+  console.log(req.files);
   //chk subcategoryId, categoryId, brandId not create efore in DB
   if (categoryId) {
     const category = await categoryModel.findById(categoryId);
