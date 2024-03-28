@@ -20,14 +20,18 @@ const productSchema = new Schema(
       required: true,
       unique: true,
     },
-    color: [{
-      type: String,
-      required: true,
-    }],
-    size: [{
-      type: String,
-      required: true,
-    }],
+    color: [
+      {
+        type: String,
+        required: true,
+      },
+    ],
+    size: [
+      {
+        type: String,
+        required: true,
+      },
+    ],
     price: {
       type: Number,
       required: true,
@@ -55,18 +59,13 @@ const productSchema = new Schema(
       type: Types.ObjectId,
       ref: "user",
     },
-    deleteBy: {
-      type: Types.ObjectId,
-      ref: "user",
-    },
-    Imges: [
+    Images: [
       {
         public_id: {
           required: true,
           type: String,
         },
         secure_url: {
-          required: true,
           type: String,
         },
       },
@@ -74,14 +73,6 @@ const productSchema = new Schema(
     categoryId: {
       type: Types.ObjectId,
       ref: "category",
-    },
-    subCategoryId: {
-      type: Types.ObjectId,
-      ref: "subcategory",
-    },
-    brandId: {
-      type: Types.ObjectId,
-      ref: "brand",
     },
   },
   { timestamps: true }
